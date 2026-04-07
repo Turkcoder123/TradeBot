@@ -244,7 +244,7 @@ Bot her çalıştığında aşağıdaki bilgileri loglar:
 
 ### Önemli Uyarılar
 
-> ⚠️ **DEmo hesap üzerinde test edin!** Gerçek para ile işlem yapmadan
+> ⚠️ **Demo hesap üzerinde test edin!** Gerçek para ile işlem yapmadan
 > önce en az 1 ay demo test yapmanız önerilir.
 
 > ⚠️ **Bot sürekli çalışmalıdır.** Her saat başı kontrol yapar,
