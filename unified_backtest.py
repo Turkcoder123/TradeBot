@@ -658,6 +658,3 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     args = parse_args()
     main(version=args.version, days=args.days)
-"""
-unified_backtest.py  – run via:  python unified_backtest.py
-"""

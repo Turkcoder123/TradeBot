@@ -1,257 +1,270 @@
-# 📘 EURUSD Scalp-Trend Hibrit Strateji Rehberi
+# 📘 EURUSD / XAUUSD Scalp-Trend Hibrit Strateji Rehberi
 
 ## İçindekiler
 
 1. [Genel Bakış](#genel-bakış)
-2. [Strateji Mantığı](#strateji-mantığı)
-3. [İndikatörler](#indikatörler)
-4. [Giriş Kuralları](#giriş-kuralları)
-5. [Risk Yönetimi](#risk-yönetimi)
-6. [Backtest Sonuçları](#backtest-sonuçları)
-7. [Overfitting Kontrolü](#overfitting-kontrolü)
-8. [Forward Test (Demo Hesap)](#forward-test-demo-hesap)
-9. [Dosya Yapısı](#dosya-yapısı)
-10. [Kurulum ve Çalıştırma](#kurulum-ve-çalıştırma)
-11. [Sık Sorulan Sorular](#sık-sorulan-sorular)
+2. [3 Strateji Versiyonu](#3-strateji-versiyonu)
+3. [Giriş Kuralları](#giriş-kuralları)
+4. [Risk Yönetimi](#risk-yönetimi)
+5. [Slippage ve Spread Loglama](#slippage-ve-spread-loglama)
+6. [Backtest (1 Ay)](#backtest-1-ay)
+7. [Live Test (Demo Hesap)](#live-test-demo-hesap)
+8. [Dosya Yapısı](#dosya-yapısı)
+9. [Kurulum ve Çalıştırma](#kurulum-ve-çalıştırma)
+10. [Sık Sorulan Sorular](#sık-sorulan-sorular)
 
 ---
 
 ## Genel Bakış
 
-Bu strateji, EURUSD paritesi için **H1 (1 saatlik)** zaman diliminde çalışan
-bir **scalp-trend hibrit** yaklaşımdır. Temel amacı:
+Bu sistem, EURUSD ve XAUUSD paritelerini **aynı anda** takip eden bir
+**scalp-trend hibrit** stratejidir. Temel özellikler:
 
-- **Trend yönünü** belirleyip sadece o yönde işlem açmak
-- **Pullback (geri çekilme)** anlarında trende katılım sağlamak
-- **Overfitting yapmadan** standart indikatör parametreleri kullanmak
+| Özellik | Değer |
+|---------|-------|
+| **Semboller** | EURUSD + XAUUSD |
+| **Lot** | 0.05 (sabit) |
+| **Başlangıç bakiye** | $50 (demo) |
+| **Hedef işlem sıklığı** | Günde 10-20 (gerektiğinde, zorunlu değil) |
+| **Backtest süresi** | 1 ay |
+| **Live test süresi** | 1 gün (24 saat) |
+| **Strateji versiyonu** | 3 farklı parametre seti |
+| **Loglama** | Slippage + spread dahil detaylı |
 
 ### Tasarım İlkeleri
 
-| İlke | Uygulama |
-|------|----------|
-| Overfitting önleme | Tüm parametreler ders kitabı standartları (EMA 50/200, RSI 14, MACD 12/26/9) |
-| Veri ayrımı | %70 eğitim / %30 test (out-of-sample doğrulama) |
-| Gerçekçi maliyetler | Spread ve komisyon hesaba katılır |
-| Adaptif risk | ATR tabanlı dinamik SL/TP |
+- **Tek birleşik sistem:** Pullback + Momentum + BB Bounce giriş tipleri tek çatıda
+- **3 parametre versiyonu:** Agresif / Dengeli / Muhafazakâr
+- **Overfitting önleme:** Standart ders kitabı parametreleri
+- **Gerçekçi maliyet:** Slippage ve spread simülasyonu
+- **Her iki sembol:** EURUSD (pip=0.0001) ve XAUUSD (pip=0.01)
 
 ---
 
-## Strateji Mantığı
+## 3 Strateji Versiyonu
 
-```
-                    EMA-50 > EMA-200?
-                   /                 \
-                 EVET                HAYIR
-              (Yükseliş)           (Düşüş)
-                 |                    |
-        Fiyat EMA-50'ye         Fiyat EMA-50'ye
-         geri çekildi?          geri yükseldi?
-                 |                    |
-         MACD histogram          MACD histogram
-            pozitif?                negatif?
-                 |                    |
-            LONG giriş           SHORT giriş
-```
+### V1 – Agresif
 
-Strateji iki giriş tipi kullanır:
+| Parametre | Değer |
+|-----------|-------|
+| EMA | 20 / 50 |
+| MACD | 8 / 17 / 9 |
+| SL | 1.0 × ATR |
+| TP | 1.5 × ATR |
+| Seans | 07:00-19:00 UTC |
+| BB Bounce | ✅ Açık |
+| EMA tolerans | 0.2% |
 
-### 1. Trend Pullback (Ana Giriş)
-Fiyat trend yönündeki EMA-50'ye geri çekilip, MACD ile momentum doğrulaması
-aldığında giriş yapılır. Bu, trend takipçi stratejilerin en güvenilir
-giriş tekniğidir.
+**Özellik:** Daha fazla işlem, daha kısa sürede, daha dar SL/TP.
 
-### 2. Momentum Doğrulama (Yardımcı Giriş)
-MACD histogramı sıfır çizgisini trend yönünde geçtiğinde ve fiyat
-EMA-50'nin doğru tarafında olduğunda giriş yapılır.
+### V2 – Dengeli
 
----
+| Parametre | Değer |
+|-----------|-------|
+| EMA | 50 / 200 |
+| MACD | 12 / 26 / 9 |
+| SL | 1.5 × ATR |
+| TP | 3.0 × ATR |
+| Seans | 08:00-17:00 UTC |
+| BB Bounce | ✅ Açık |
+| EMA tolerans | 0.1% |
 
-## İndikatörler
+**Özellik:** Standart parametreler, 1:2 risk-ödül.
 
-| İndikatör | Parametre | Amaç |
-|-----------|-----------|------|
-| **EMA-50** | Periyot: 50 | Hızlı trend takibi, dinamik destek/direnç |
-| **EMA-200** | Periyot: 200 | Ana trend yönü belirleme |
-| **MACD** | 12/26/9 | Momentum doğrulama |
-| **RSI** | Periyot: 14 | Aşırı alım/satım kontrolü |
-| **Bollinger Bands** | 20/2σ | Volatilite ölçümü |
-| **ATR** | Periyot: 14 | Dinamik SL/TP hesaplama |
+### V3 – Muhafazakâr
 
-> ⚠️ **Not:** Tüm parametreler standart ders kitabı değerleridir. Hiçbir
-> parametre optimizasyonu yapılmamıştır.
+| Parametre | Değer |
+|-----------|-------|
+| EMA | 50 / 200 |
+| MACD | 12 / 26 / 9 |
+| SL | 2.0 × ATR |
+| TP | 4.0 × ATR |
+| Seans | 09:00-16:00 UTC |
+| BB Bounce | ❌ Kapalı |
+| EMA tolerans | 0.05% |
+
+**Özellik:** Az ama kaliteli işlem, geniş SL/TP.
 
 ---
 
 ## Giriş Kuralları
 
-### LONG (Alış) Giriş
+3 giriş tipi tüm versiyonlarda birleşik çalışır:
 
-**Tip 1 – Trend Pullback:**
-1. ✅ EMA-50 > EMA-200 (yükseliş trendi)
-2. ✅ Mumun düşük fiyatı (low) EMA-50'ye değdi veya aşağı geçti
-3. ✅ Mum, EMA-50'nin **üzerinde** kapandı (bounce/sıçrama)
-4. ✅ MACD histogramı **pozitif** (momentum doğrulama)
-5. ✅ Saat: 08:00-17:00 UTC (Londra/NY oturumu)
+### Tip 1 – Trend Pullback (Ana Giriş)
 
-**Tip 2 – Momentum:**
-1. ✅ EMA-50 > EMA-200 (yükseliş trendi)
-2. ✅ MACD histogramı negatiften pozitife geçti
-3. ✅ Fiyat EMA-50'nin üzerinde
-4. ✅ Saat: 08:00-17:00 UTC
+```
+Trend yönü belirlenir (EMA-hızlı > EMA-yavaş = yükseliş)
+  → Fiyat EMA-hızlı'ya geri çekilir
+  → Mum EMA-hızlı'nın trend tarafında kapanır
+  → MACD histogram trend yönünde
+  → İşlem açılır
+```
 
-### SHORT (Satış) Giriş
+### Tip 2 – Momentum (MACD Zero-Cross)
 
-**Tip 1 – Trend Pullback:**
-1. ✅ EMA-50 < EMA-200 (düşüş trendi)
-2. ✅ Mumun yüksek fiyatı (high) EMA-50'ye değdi veya yukarı geçti
-3. ✅ Mum, EMA-50'nin **altında** kapandı (rejection/reddedilme)
-4. ✅ MACD histogramı **negatif** (momentum doğrulama)
-5. ✅ Saat: 08:00-17:00 UTC
+```
+Trend yönü belirlenir
+  → MACD histogram sıfır çizgisini trend yönünde geçer
+  → Fiyat EMA-hızlı'nın trend tarafında
+  → İşlem açılır
+```
 
-**Tip 2 – Momentum:**
-1. ✅ EMA-50 < EMA-200 (düşüş trendi)
-2. ✅ MACD histogramı pozitiften negatife geçti
-3. ✅ Fiyat EMA-50'nin altında
-4. ✅ Saat: 08:00-17:00 UTC
+### Tip 3 – BB Bounce (Scalp Girişi)
+
+```
+Trend yönü belirlenir
+  → Fiyat Bollinger Band'ın dış bandına değer
+  → Band içine geri döner (bounce)
+  → RSI kontrolü (aşırı alım/satım filtreleme)
+  → İşlem açılır
+```
+
+> ⚠️ **Not:** BB Bounce V3'te devre dışıdır. V1 ve V2'de aktiftir.
 
 ---
 
 ## Risk Yönetimi
 
-| Parametre | Değer | Açıklama |
-|-----------|-------|----------|
-| **Stop Loss** | 1.5 × ATR(14) | Volatiliteye göre dinamik |
-| **Take Profit** | 3.0 × ATR(14) | Risk:Ödül = 1:2 |
-| **Risk/İşlem** | %1 | Hesap bakiyesinin %1'i riskle |
-| **Pozisyon** | Tek pozisyon | Aynı anda tek işlem |
-| **Lot Hesabı** | (Bakiye × %1) / (SL pip × 10) | Otomatik lot hesaplama |
-| **Seans** | 08:00-17:00 UTC | Sadece yüksek likidite saatleri |
+| Parametre | Değer |
+|-----------|-------|
+| **Lot** | 0.05 sabit |
+| **Bakiye** | $50 demo |
+| **SL/TP** | ATR tabanlı (versiyona göre) |
+| **Tek pozisyon** | Sembol + versiyon başına 1 |
+| **Margin kontrolü** | Bakiye < $5 ise yeni işlem açılmaz |
 
-### Başabaş Noktası
-- SL=1.5 ATR, TP=3.0 ATR → Başabaş için gereken kazanma oranı: **%33.3**
-- Stratejinin gerçek kazanma oranı: **~%35** (başabaş üzerinde)
+### Pip Değerleri (0.05 lot)
 
----
-
-## Backtest Sonuçları
-
-### Veri Bilgisi
-- **Sembol:** EURUSD
-- **Zaman dilimi:** H1 (1 saat)
-- **Tarih aralığı:** 09 Ekim 2025 – 07 Nisan 2026 (6 ay)
-- **Toplam bar:** 3015
-- **Başlangıç bakiyesi:** $10,000
-
-### In-Sample (Eğitim Seti - %70)
-| Metrik | Değer |
-|--------|-------|
-| Toplam işlem | 52 |
-| Kazanan | 19 |
-| Kaybeden | 33 |
-| Kazanma oranı | %36.5 |
-| Toplam kar/zarar | +96.9 pip / +$296 |
-| Profit factor | 1.09 |
-| Maks. drawdown | $1,010 |
-
-### Out-of-Sample (Test Seti - %30)
-| Metrik | Değer |
-|--------|-------|
-| Toplam işlem | 23 |
-| Kazanan | 7 |
-| Kaybeden | 16 |
-| Kazanma oranı | %30.4 |
-| Toplam kar/zarar | -35.5 pip / -$266 |
-| Profit factor | 0.83 |
-| Maks. drawdown | $693 |
-
-### Tam Veri Seti (%100)
-| Metrik | Değer |
-|--------|-------|
-| Toplam işlem | 75 |
-| Kazanan | 26 |
-| Kaybeden | 49 |
-| Kazanma oranı | %34.7 |
-| Toplam kar/zarar | +61.4 pip / +$17 |
-| Profit factor | 1.0 |
-
-### Önemli Notlar
-- SHORT sinyalleri düşüş trendinde güçlü sonuç verdi (+40-58 pip kazançlar)
-- LONG sinyalleri bu dönemde zayıf (piyasa genel olarak yatay/düşüş eğiliminde)
-- Strateji **simetrik kurallar** kullanır – piyasa koşulları değiştiğinde
-  her iki yönde de çalışır
+| Sembol | Pip boyutu | Pip değeri |
+|--------|-----------|------------|
+| EURUSD | 0.0001 | $0.50 |
+| XAUUSD | 0.01 | $0.05 |
 
 ---
 
-## Overfitting Kontrolü
+## Slippage ve Spread Loglama
 
-### Test Edilen Önlemler
+Her işlem için kaydedilen detaylar:
 
-1. **Standart Parametreler:** Tüm indikatörler ders kitabı değerleri (optimizasyon yok)
-2. **Veri Ayrımı:** %70 eğitim / %30 doğrulama seti
-3. **Simetrik Kurallar:** Aynı mantık LONG ve SHORT için geçerli
-4. **Basit Kural Seti:** Sadece 4-5 koşul (karmaşık değil)
+| Alan | Açıklama |
+|------|----------|
+| `signal_price` | Stratejinin hesapladığı sinyal fiyatı |
+| `entry_price` | Spread + slippage eklendikten sonraki gerçek giriş |
+| `spread_pips` | Girişteki spread (pip) |
+| `spread_usd` | Girişteki spread ($) |
+| `slippage_entry_pips` | Giriş kayması (pip) |
+| `slippage_entry_usd` | Giriş kayması ($) |
+| `slippage_exit_pips` | Çıkış kayması (pip, sadece SL'de) |
+| `slippage_exit_usd` | Çıkış kayması ($) |
+| `total_cost_usd` | Toplam maliyet (spread + slippage) |
+| `gross_pnl_usd` | Brüt kar/zarar |
+| `net_pnl_usd` | Net kar/zarar (brüt - maliyet) |
+| `balance_after` | İşlem sonrası bakiye |
+| `duration_bars` | İşlem süresi (bar sayısı) |
 
-### Sonuç
+### Backtest'te
+Slippage, broker-gerçekçi sınırlar içinde rastgele simüle edilir:
+- EURUSD: 0-2 pip
+- XAUUSD: 0-10 pip
 
-| Metrik | Eğitim | Test | Fark |
-|--------|--------|------|------|
-| Kazanma Oranı | %36.5 | %30.4 | %6.1 |
-
-✅ **%6.1 fark, düşük overfitting riski göstermektedir** (kabul edilebilir eşik: <%15).
-
-Eğitim seti hafif kârlı, test seti hafif zararlı – bu gerçekçi bir sonuçtur.
-Strateji "sihirli" değil, ancak **mantıksal bir avantaja** sahiptir.
+### Live'da
+Gerçek slippage kaydedilir: talep edilen fiyat vs doldurma fiyatı.
 
 ---
 
-## Forward Test (Demo Hesap)
+## Backtest (1 Ay)
 
-### Başlatma
-
-MetaTrader 5 terminali açık ve demo hesaba giriş yapılmış olmalıdır.
+### Çalıştırma
 
 ```bash
-# Botu başlat (varsayılan: 0.01 lot, EURUSD)
-python mt5_bot.py
+# Tüm versiyonlar + tüm semboller, son 30 gün
+python unified_backtest.py
 
-# Özel lot boyutu
-python mt5_bot.py --lot 0.05
+# Sadece V1 (Agresif)
+python unified_backtest.py --version V1
 
-# Özel sembol
-python mt5_bot.py --symbol EURUSD --lot 0.02
+# Son 60 gün
+python unified_backtest.py --days 60
+```
+
+### Çıktılar
+
+```
+results/
+├── backtest_V1_Agresif_EURUSD_<timestamp>.csv
+├── backtest_V2_Dengeli_EURUSD_<timestamp>.csv
+├── backtest_V3_Muhafazakar_EURUSD_<timestamp>.csv
+├── backtest_V1_Agresif_XAUUSD_<timestamp>.csv
+├── ... (her versiyon × sembol için)
+├── backtest_all_trades_<timestamp>.csv
+└── backtest_summary_<timestamp>.json
+```
+
+Ekran çıktısında karşılaştırma tablosu gösterilir:
+
+```
+  KARŞILAŞTIRMA TABLOSU
+  Versiyon           Sembol    İşlem  Kazanma   Net pip     Net $   Maliyet   DD     PF    Bakiye
+  V1_Agresif         EURUSD       15    33.3%    -115.1    -57.56     21.98  74.58  0.52     -7.57
+  V2_Dengeli         EURUSD        7    14.3%     -96.4    -48.19     10.00  85.41  0.44      1.81
+  V3_Muhafazakar     EURUSD        5    20.0%    -116.3    -58.17      7.72  64.53  0.34     -8.17
+```
+
+---
+
+## Live Test (Demo Hesap)
+
+### Ön Koşullar
+
+- MetaTrader 5 terminali açık ve demo hesaba giriş yapılmış
+- Python bağımlılıkları kurulu
+- EURUSD ve XAUUSD sembolleri aktif
+
+### Çalıştırma
+
+```bash
+# Varsayılan: V2, 24 saat, hem EURUSD hem XAUUSD
+python unified_live.py
+
+# V1 (Agresif), 8 saat
+python unified_live.py --version V1 --hours 8
+
+# V3 (Muhafazakâr), 24 saat
+python unified_live.py --version V3
 ```
 
 ### Bot Davranışı
 
 1. MT5 terminaline bağlanır
-2. Her saatte bir (H1 bar kapanışında) kontrol yapar
-3. Açık pozisyon yoksa sinyal arar
-4. Sinyal varsa SL/TP ile market emri gönderir
-5. Aynı anda sadece 1 pozisyon açık tutulur
-6. Tüm işlemler `logs/mt5_bot.log` dosyasına kaydedilir
+2. Her saat başı (H1 bar kapanışı) sinyal kontrol eder
+3. EURUSD ve XAUUSD'yi aynı anda takip eder
+4. Sinyal varsa 0.05 lot ile market emri gönderir
+5. Gerçek slippage ve spread kaydedilir
+6. Belirtilen süre sonunda otomatik durur
+7. Tüm sonuçlar `results/` ve `logs/` klasörlerine kaydedilir
 
-### Log Dosyası
+### Çıktılar
 
 ```
-logs/mt5_bot.log
+results/
+├── live_trades_V2_Dengeli_<timestamp>.csv
+└── live_summary_V2_Dengeli_<timestamp>.json
+
+logs/
+└── live_V2_<timestamp>.log
 ```
 
-Bot her çalıştığında aşağıdaki bilgileri loglar:
-- Bağlantı bilgisi
-- Her bar kontrolü
-- Sinyal detayları (yön, giriş, SL, TP, ATR)
-- İşlem sonuçları
+### Log Formatı
 
-### Önemli Uyarılar
-
-> ⚠️ **Demo hesap üzerinde test edin!** Gerçek para ile işlem yapmadan
-> önce en az 1 ay demo test yapmanız önerilir.
-
-> ⚠️ **Bot sürekli çalışmalıdır.** Her saat başı kontrol yapar,
-> kapatırsanız sinyalleri kaçırırsınız.
-
-> ⚠️ **İnternet bağlantısı** gereklidir. MT5 terminali açık ve
-> bağlı olmalıdır.
+Her işlem için şu detaylar loglanır:
+```
+📈 Sinyal: EURUSD LONG V2_Dengeli  fiyat=1.15632  SL=1.15132  TP=1.16632
+   ATR=0.00333  spread=1.5 pip  tip=pullback
+✅ BUY EURUSD 0.05 lot @ 1.15635 (talep=1.15632, kayma=0.3 pip/$0.15,
+   spread=1.5 pip/$0.75)  SL=1.15132  TP=1.16632  ticket=12345
+🔴 Kapandı: EURUSD LONG V2_Dengeli  brüt=4.50  maliyet=0.90  net=3.60  bakiye=53.60
+```
 
 ---
 
@@ -260,114 +273,113 @@ Bot her çalıştığında aşağıdaki bilgileri loglar:
 ```
 tradebot/
 ├── data/
-│   └── EURUSD_6m.csv          # 6 aylık H1 fiyat verisi
+│   ├── EURUSD_6m.csv              # 6 aylık H1 fiyat verisi
+│   └── XAUUSD_6m.csv              # (fetch_prices.py ile çekilir)
+├── results/                       # Backtest ve live sonuçları
+│   ├── backtest_*.csv             # İşlem detayları
+│   ├── backtest_summary_*.json    # Özet karşılaştırma
+│   ├── live_trades_*.csv          # Canlı işlem detayları
+│   └── live_summary_*.json        # Canlı test özeti
 ├── logs/
-│   └── mt5_bot.log            # Bot log dosyası
+│   └── live_*.log                 # Bot logları
 ├── tests/
-│   ├── conftest.py            # Test yapılandırması
-│   ├── test_fetch_prices.py   # Veri çekme testleri
-│   ├── test_strategy.py       # Strateji testleri
-│   └── test_backtest.py       # Backtest testleri
-├── strategy.py                # Strateji mantığı ve indikatörler
-├── backtest.py                # Backtest motoru
-├── mt5_bot.py                 # Forward test botu (MT5 canlı)
-├── fetch_prices.py            # MT5'ten veri çekme
-├── requirements.txt           # Python bağımlılıkları
-└── REHBER.md                  # Bu dosya
+│   ├── conftest.py
+│   ├── test_fetch_prices.py
+│   ├── test_strategy.py
+│   ├── test_backtest.py
+│   └── test_unified.py            # Birleşik sistem testleri
+├── strategy.py                    # Strateji + StrategyConfig + 3 preset
+├── backtest.py                    # Eski backtest (geriye uyumlu)
+├── unified_backtest.py            # Birleşik backtest (3 versiyon × 2 sembol)
+├── unified_live.py                # Birleşik canlı test botu
+├── mt5_bot.py                     # Eski live bot (geriye uyumlu)
+├── fetch_prices.py                # MT5'ten veri çekme
+├── requirements.txt
+└── REHBER.md                      # Bu dosya
 ```
 
 ---
 
 ## Kurulum ve Çalıştırma
 
-### Ön Gereksinimler
-
-- Python 3.10+
-- MetaTrader 5 terminali kurulu ve giriş yapılmış
-- Demo hesap açık
-
-### Kurulum
+### 1. Bağımlılıkları Kur
 
 ```bash
-# Bağımlılıkları kur
 pip install -r requirements.txt
-
-# (İsteğe bağlı) Yeni veri çek
-python fetch_prices.py EURUSD
 ```
 
-### Backtest Çalıştırma
+### 2. Veri Çek (İlk Kez)
 
 ```bash
-# Varsayılan CSV ile backtest
-python backtest.py
-
-# Özel CSV ile backtest
-python backtest.py path/to/custom.csv
+python fetch_prices.py EURUSD XAUUSD
 ```
 
-### Testleri Çalıştırma
+### 3. Backtest Çalıştır
 
 ```bash
-# Tüm testler
+# Tüm versiyonlar, son 30 gün
+python unified_backtest.py
+
+# Özel süre
+python unified_backtest.py --days 60
+```
+
+### 4. Sonuçları İncele
+
+`results/` klasöründeki CSV ve JSON dosyalarını kontrol edin.
+
+### 5. Live Test Başlat
+
+```bash
+# Demo hesap ile
+python unified_live.py --version V2 --hours 24
+```
+
+### 6. Testleri Çalıştır
+
+```bash
 python -m pytest tests/ -v
-
-# Sadece strateji testleri
-python -m pytest tests/test_strategy.py -v
-
-# Sadece backtest testleri
-python -m pytest tests/test_backtest.py -v
-```
-
-### Forward Test Başlatma
-
-```bash
-# Demo hesapta botu başlat
-python mt5_bot.py --lot 0.01
 ```
 
 ---
 
 ## Sık Sorulan Sorular
 
-### Neden kazanma oranı düşük (~%35)?
+### $50 ile 0.05 lot çok riskli değil mi?
 
-Strateji **1:2 risk-ödül oranı** kullanır (SL=1.5 ATR, TP=3.0 ATR). Bu
-nedenle daha az işlem kazanır ama kazandığında daha çok kazanır. Başabaş
-noktası sadece %33.3 kazanma oranıdır.
+Evet, bu **demo test** amaçlıdır. Gerçek hesapta $50 ile 0.05 lot
+kullanmak tavsiye edilmez. Demo hesapta stratejiyi doğrulamak için
+uygundur.
 
-### Neden LONG işlemler zayıf?
+### Neden 3 farklı versiyon?
 
-Bu 6 aylık dönemde EURUSD genel olarak yatay veya hafif düşüş eğiliminde
-idi. Strateji simetrik kurallar kullandığı için her iki yönde de aynı
-mantığı uygular – yükseliş trendlerinde LONG işlemler daha iyi sonuç
-verecektir.
+Her trader farklı risk toleransına sahiptir:
+- **V1:** Sık işlem, kısa SL/TP, scalp ağırlıklı
+- **V2:** Dengeli yaklaşım, standart parametreler
+- **V3:** Az işlem, geniş SL/TP, trend ağırlıklı
 
-### Overfitting yapılmadığını nasıl anlarız?
+### XAUUSD verisi yoksa ne olur?
 
-1. Tüm indikatör parametreleri standart ders kitabı değerleri
-2. Eğitim-test arası kazanma oranı farkı sadece %6.1
-3. Kurallar basit ve az sayıda (4-5 koşul)
-4. Parametre optimizasyonu yapılmadı
+Backtest XAUUSD'yi atlayıp sadece EURUSD ile devam eder.
+Veriyi çekmek için: `python fetch_prices.py XAUUSD`
 
-### Stratejiyi nasıl geliştirebilirim?
+### Live test sırasında bot çökerse?
 
-- Farklı zaman dilimlerini deneyin (M15, M30, H4)
-- Diğer paritelerde test edin (GBPUSD, USDJPY)
-- Trailing stop ekleyin (fiyat 1x ATR kâra geçtiğinde SL'yi giriş noktasına çekin)
-- Haber filtresi ekleyin (yüksek etkili haberlerden önce işlem kapatın)
+Açık pozisyonlar MT5 sunucusunda SL/TP ile korunur.
+O ana kadarki sonuçlar otomatik kaydedilir.
 
-### Bot çöktüğünde ne olur?
+### Slippage neden sadece SL'de var, TP'de yok?
 
-Açık pozisyonlar MT5 sunucusunda SL/TP ile korunmaya devam eder.
-Bot tekrar başlatıldığında mevcut pozisyonu algılar ve yeni sinyal
-bekler.
+TP (take-profit) limit emir olarak çalışır → slippage yok.
+SL (stop-loss) stop emir olarak çalışır → piyasa koşullarına göre kayma olabilir.
 
 ---
 
 ## Sorumluluk Reddi
 
-Bu strateji **eğitim amaçlıdır**. Forex piyasasında işlem yapmak yüksek
-risk taşır. Geçmiş performans gelecekteki sonuçları garanti etmez.
-Gerçek para ile işlem yapmadan önce yeterli deneyim kazanın ve
-kaybetmeyi göze alabileceğiniz miktarla işlem yapın.
+Bu sistem **eğitim ve demo test amaçlıdır**. Forex/CFD piyasasında işlem
+yapmak yüksek risk taşır. Geçmiş performans gelecekteki sonuçları garanti
+etmez. Gerçek para ile işlem yapmadan önce:
+- Demo hesapta yeterli test yapın
+- Risk yönetimi kurallarını uygulayın
+- Kaybetmeyi göze alabileceğiniz miktarla işlem yapın
