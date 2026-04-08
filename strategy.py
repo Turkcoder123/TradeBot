@@ -1,34 +1,35 @@
 """
 strategy.py
 
-Scalp–Trend hybrid trading strategy for EURUSD H1 bars.
+Scalp–Trend hybrid trading strategy for EURUSD / XAUUSD.
 
 Design principles
 -----------------
 * **No overfitting** – only standard, widely-used indicator parameters are
   employed (EMA-50/200, RSI-14, MACD 12/26/9, ATR-14).  No parameter
   optimisation was performed; every value is a textbook default.
-* **Trend filter** – EMA-50 vs EMA-200 determines the allowed trade direction.
-* **Entry type 1 – Trend Pullback** – price retests EMA-50 in the direction
-  of the trend *and* the MACD histogram confirms momentum.  This captures
-  pullback-continuation moves that are the bread-and-butter of trend trading.
+* **Trend filter** – EMA-fast vs EMA-slow determines the allowed trade direction.
+* **Entry type 1 – Trend Pullback** – price retests EMA-fast in the direction
+  of the trend *and* the MACD histogram confirms momentum.
 * **Entry type 2 – Momentum Confirmation** – MACD histogram crosses zero in
   the trend direction, confirming a fresh wave of momentum.
-* **Session filter** – trades are only allowed during the London / New York
-  overlap (08:00–17:00 UTC) when EURUSD liquidity is highest.
+* **Entry type 3 – BB Bounce** – price touches the outer Bollinger Band in
+  the trend direction and closes back inside, capturing mean-reversion scalps.
+* **Session filter** – trades are only allowed during configurable session hours.
 * **ATR-based risk** – stop-loss and take-profit are scaled to recent
   volatility so the strategy adapts to changing market conditions.
+* **3 parameter presets** – Aggressive, Balanced, Conservative – allow
+  selecting a risk/reward profile without manual tuning.
 
-Data-driven validation
-----------------------
-The EMA-50 pullback + MACD confirmation pattern was validated out-of-sample
-on 30 % hold-out data and retained a positive edge (58 % win rate, +3 pip avg)
-demonstrating robustness beyond the training window.
+Multi-symbol support
+--------------------
+Both EURUSD (pip=0.0001) and XAUUSD (pip=0.01) are supported via
+:class:`SymbolSpec`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -65,6 +66,124 @@ EMA_RETEST_TOL: float = 0.001
 
 
 # ---------------------------------------------------------------------------
+# Strategy configuration
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class StrategyConfig:
+    """All tuneable strategy parameters in one place.
+
+    Three presets are provided below: ``V1_AGGRESSIVE``, ``V2_BALANCED``,
+    ``V3_CONSERVATIVE``.  Creating a :class:`StrategyConfig` with custom
+    values is also supported.
+    """
+
+    name: str = "default"
+    ema_fast: int = EMA_FAST
+    ema_slow: int = EMA_SLOW
+    rsi_period: int = RSI_PERIOD
+    bb_period: int = BB_PERIOD
+    bb_std: float = BB_STD
+    atr_period: int = ATR_PERIOD
+    macd_fast: int = MACD_FAST
+    macd_slow: int = MACD_SLOW
+    macd_signal: int = MACD_SIGNAL
+    session_start: int = SESSION_START_HOUR
+    session_end: int = SESSION_END_HOUR
+    sl_atr_mult: float = SL_ATR_MULT
+    tp_atr_mult: float = TP_ATR_MULT
+    ema_retest_tol: float = EMA_RETEST_TOL
+    enable_bb_bounce: bool = True       # Entry type 3 – BB bounce
+
+
+# Pre-built presets --------------------------------------------------------
+
+V1_AGGRESSIVE = StrategyConfig(
+    name="V1_Agresif",
+    ema_fast=20,
+    ema_slow=50,
+    macd_fast=8,
+    macd_slow=17,
+    macd_signal=9,
+    session_start=7,
+    session_end=19,
+    sl_atr_mult=1.0,
+    tp_atr_mult=1.5,
+    ema_retest_tol=0.002,
+    enable_bb_bounce=True,
+)
+
+V2_BALANCED = StrategyConfig(
+    name="V2_Dengeli",
+    ema_fast=50,
+    ema_slow=200,
+    macd_fast=12,
+    macd_slow=26,
+    macd_signal=9,
+    session_start=8,
+    session_end=17,
+    sl_atr_mult=1.5,
+    tp_atr_mult=3.0,
+    ema_retest_tol=0.001,
+    enable_bb_bounce=True,
+)
+
+V3_CONSERVATIVE = StrategyConfig(
+    name="V3_Muhafazakar",
+    ema_fast=50,
+    ema_slow=200,
+    macd_fast=12,
+    macd_slow=26,
+    macd_signal=9,
+    session_start=9,
+    session_end=16,
+    sl_atr_mult=2.0,
+    tp_atr_mult=4.0,
+    ema_retest_tol=0.0005,
+    enable_bb_bounce=False,
+)
+
+ALL_CONFIGS = [V1_AGGRESSIVE, V2_BALANCED, V3_CONSERVATIVE]
+
+
+# ---------------------------------------------------------------------------
+# Symbol specification
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SymbolSpec:
+    """Instrument-specific parameters."""
+
+    name: str
+    pip_size: float
+    pip_value_per_lot: float   # USD P&L per pip per standard lot
+    default_spread_pips: float
+    max_slippage_pips: float
+    csv_path: str = ""
+
+
+EURUSD_SPEC = SymbolSpec(
+    name="EURUSD",
+    pip_size=0.0001,
+    pip_value_per_lot=10.0,
+    default_spread_pips=1.5,
+    max_slippage_pips=2.0,
+    csv_path="data/EURUSD_6m.csv",
+)
+
+XAUUSD_SPEC = SymbolSpec(
+    name="XAUUSD",
+    pip_size=0.01,
+    pip_value_per_lot=1.0,
+    default_spread_pips=30.0,
+    max_slippage_pips=10.0,
+    csv_path="data/XAUUSD_6m.csv",
+)
+
+ALL_SYMBOLS = [EURUSD_SPEC, XAUUSD_SPEC]
+
+
+# ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
 
@@ -84,7 +203,7 @@ class Signal:
     atr: float
     bar_index: int          # index in the DataFrame
     bar_time: pd.Timestamp
-    signal_type: str = ""   # "pullback" or "momentum"
+    signal_type: str = ""   # "pullback", "momentum", or "bb_bounce"
 
 
 # ---------------------------------------------------------------------------
@@ -154,20 +273,28 @@ def compute_macd(
 # Indicator attachment
 # ---------------------------------------------------------------------------
 
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def add_indicators(
+    df: pd.DataFrame,
+    config: Optional[StrategyConfig] = None,
+) -> pd.DataFrame:
     """Add all strategy indicators to *df* and return a new DataFrame.
 
     Expected columns: ``open, high, low, close`` (and optionally ``time``).
+    When *config* is ``None``, the module-level constants are used (backward
+    compatible).
     """
+    cfg = config or StrategyConfig()
     df = df.copy()
-    df["ema_fast"] = compute_ema(df["close"], EMA_FAST)
-    df["ema_slow"] = compute_ema(df["close"], EMA_SLOW)
-    df["rsi"] = compute_rsi(df["close"], RSI_PERIOD)
+    df["ema_fast"] = compute_ema(df["close"], cfg.ema_fast)
+    df["ema_slow"] = compute_ema(df["close"], cfg.ema_slow)
+    df["rsi"] = compute_rsi(df["close"], cfg.rsi_period)
     df["bb_mid"], df["bb_upper"], df["bb_lower"] = compute_bollinger(
-        df["close"], BB_PERIOD, BB_STD
+        df["close"], cfg.bb_period, cfg.bb_std
     )
-    df["atr"] = compute_atr(df["high"], df["low"], df["close"], ATR_PERIOD)
-    df["macd"], df["macd_signal"], df["macd_hist"] = compute_macd(df["close"])
+    df["atr"] = compute_atr(df["high"], df["low"], df["close"], cfg.atr_period)
+    df["macd"], df["macd_signal"], df["macd_hist"] = compute_macd(
+        df["close"], cfg.macd_fast, cfg.macd_slow, cfg.macd_signal,
+    )
 
     # Trend direction: +1 uptrend, -1 downtrend
     df["trend"] = np.where(df["ema_fast"] > df["ema_slow"], 1, -1)
@@ -178,26 +305,34 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # Signal generation
 # ---------------------------------------------------------------------------
 
-def _in_session(hour: int) -> bool:
+def _in_session(hour: int, start: int = SESSION_START_HOUR,
+                end: int = SESSION_END_HOUR) -> bool:
     """Return True if *hour* (UTC) is inside the allowed trading session."""
-    return SESSION_START_HOUR <= hour <= SESSION_END_HOUR
+    return start <= hour <= end
 
 
-def generate_signals(df: pd.DataFrame) -> list[Signal]:
+def generate_signals(
+    df: pd.DataFrame,
+    config: Optional[StrategyConfig] = None,
+) -> list[Signal]:
     """Scan the DataFrame and return a list of :class:`Signal` objects.
 
-    Two entry types are checked:
+    Three entry types are checked:
 
-    1. **Trend Pullback** – price retests EMA-50 in the direction of the
-       larger trend (EMA-50 > EMA-200 for longs, vice versa for shorts) and
-       the MACD histogram confirms the prevailing momentum.
+    1. **Trend Pullback** – price retests EMA-fast in the direction of the
+       larger trend and the MACD histogram confirms the prevailing momentum.
 
     2. **Momentum Confirmation** – MACD histogram crosses zero in the trend
        direction (fresh momentum wave).
 
+    3. **BB Bounce** – price touches the outer Bollinger Band in the trend
+       direction and closes back inside (mean-reversion scalp).
+
+    When *config* is ``None``, the module-level constants are used.
     The DataFrame must already contain indicator columns (call
     :func:`add_indicators` first).
     """
+    cfg = config or StrategyConfig()
     signals: list[Signal] = []
 
     for i in range(1, len(df)):
@@ -216,7 +351,7 @@ def generate_signals(df: pd.DataFrame) -> list[Signal]:
         hour = bar_time.hour if hasattr(bar_time, "hour") else 0
 
         # --- Session filter ---
-        if not _in_session(hour):
+        if not _in_session(hour, cfg.session_start, cfg.session_end):
             continue
 
         # --- Must have valid indicators ---
@@ -236,18 +371,18 @@ def generate_signals(df: pd.DataFrame) -> list[Signal]:
         ema_f = row["ema_fast"]
 
         # ==================================================================
-        # ENTRY TYPE 1 – Trend Pullback (EMA-50 retest + MACD confirmation)
+        # ENTRY TYPE 1 – Trend Pullback (EMA-fast retest + MACD confirmation)
         # ==================================================================
 
         # --- LONG pullback ---
         if (
             trend == 1
-            and row["low"] <= ema_f * (1 + EMA_RETEST_TOL)
-            and close > ema_f                    # candle closes above EMA-50
+            and row["low"] <= ema_f * (1 + cfg.ema_retest_tol)
+            and close > ema_f                    # candle closes above EMA-fast
             and row["macd_hist"] > 0             # MACD histogram positive
         ):
-            sl = close - SL_ATR_MULT * atr
-            tp = close + TP_ATR_MULT * atr
+            sl = close - cfg.sl_atr_mult * atr
+            tp = close + cfg.tp_atr_mult * atr
             signals.append(
                 Signal(Direction.LONG, close, sl, tp, atr, i, bar_time, "pullback")
             )
@@ -256,12 +391,12 @@ def generate_signals(df: pd.DataFrame) -> list[Signal]:
         # --- SHORT pullback ---
         if (
             trend == -1
-            and row["high"] >= ema_f * (1 - EMA_RETEST_TOL)
-            and close < ema_f                    # candle closes below EMA-50
+            and row["high"] >= ema_f * (1 - cfg.ema_retest_tol)
+            and close < ema_f                    # candle closes below EMA-fast
             and row["macd_hist"] < 0             # MACD histogram negative
         ):
-            sl = close + SL_ATR_MULT * atr
-            tp = close - TP_ATR_MULT * atr
+            sl = close + cfg.sl_atr_mult * atr
+            tp = close - cfg.tp_atr_mult * atr
             signals.append(
                 Signal(Direction.SHORT, close, sl, tp, atr, i, bar_time, "pullback")
             )
@@ -280,23 +415,62 @@ def generate_signals(df: pd.DataFrame) -> list[Signal]:
             and row["macd_hist"] > 0
             and close > ema_f
         ):
-            sl = close - SL_ATR_MULT * atr
-            tp = close + TP_ATR_MULT * atr
+            sl = close - cfg.sl_atr_mult * atr
+            tp = close + cfg.tp_atr_mult * atr
             signals.append(
                 Signal(Direction.LONG, close, sl, tp, atr, i, bar_time, "momentum")
             )
+            continue
 
         # --- SHORT momentum ---
-        elif (
+        if (
             trend == -1
             and prev_hist >= 0
             and row["macd_hist"] < 0
             and close < ema_f
         ):
-            sl = close + SL_ATR_MULT * atr
-            tp = close - TP_ATR_MULT * atr
+            sl = close + cfg.sl_atr_mult * atr
+            tp = close - cfg.tp_atr_mult * atr
             signals.append(
                 Signal(Direction.SHORT, close, sl, tp, atr, i, bar_time, "momentum")
+            )
+            continue
+
+        # ==================================================================
+        # ENTRY TYPE 3 – BB Bounce (mean-reversion scalp)
+        # ==================================================================
+
+        if not cfg.enable_bb_bounce:
+            continue
+
+        if pd.isna(row["bb_upper"]) or pd.isna(row["bb_lower"]):
+            continue
+
+        # --- LONG BB bounce ---
+        if (
+            trend == 1
+            and prev["low"] <= prev.get("bb_lower", float("inf"))
+            and close > row["bb_lower"]          # bounced back above lower BB
+            and row["rsi"] < 40                  # not overbought
+        ):
+            sl = close - cfg.sl_atr_mult * atr
+            tp = close + cfg.tp_atr_mult * atr
+            signals.append(
+                Signal(Direction.LONG, close, sl, tp, atr, i, bar_time, "bb_bounce")
+            )
+            continue
+
+        # --- SHORT BB bounce ---
+        if (
+            trend == -1
+            and prev["high"] >= prev.get("bb_upper", 0)
+            and close < row["bb_upper"]          # rejected below upper BB
+            and row["rsi"] > 60                  # not oversold
+        ):
+            sl = close + cfg.sl_atr_mult * atr
+            tp = close - cfg.tp_atr_mult * atr
+            signals.append(
+                Signal(Direction.SHORT, close, sl, tp, atr, i, bar_time, "bb_bounce")
             )
 
     return signals
@@ -306,7 +480,10 @@ def generate_signals(df: pd.DataFrame) -> list[Signal]:
 # Public convenience
 # ---------------------------------------------------------------------------
 
-def prepare_data(csv_path: str) -> pd.DataFrame:
+def prepare_data(
+    csv_path: str,
+    config: Optional[StrategyConfig] = None,
+) -> pd.DataFrame:
     """Load a CSV, add indicators, and return the enriched DataFrame."""
     df = pd.read_csv(csv_path, parse_dates=["time"], index_col="time")
-    return add_indicators(df)
+    return add_indicators(df, config)
