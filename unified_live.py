@@ -363,7 +363,9 @@ def check_closed_trades(
                     exit_price = d.price
                     exit_time = datetime.fromtimestamp(d.time, tz=timezone.utc).isoformat()
                     gross_pnl = d.profit
-                    # Estimate exit slippage (TP is limit, SL is stop)
+                    # Estimate exit slippage by comparing fill to nearest
+                    # SL/TP level.  Assumes exits only via SL/TP; manual or
+                    # broker-initiated closes will show larger apparent slippage.
                     if ot.direction == Direction.LONG:
                         expected_exit = ot.sl if exit_price <= ot.sl else ot.tp
                     else:

@@ -196,16 +196,19 @@ def simulate_trade(
 
     if signal.direction == Direction.LONG:
         actual_exit = exit_price - slip_exit_price  # worse for longs
-        gross_pnl_pips = (exit_price - actual_entry) / pip
+        # Gross = raw signal move (no costs)
+        gross_pnl_pips = (exit_price - signal.entry_price) / pip
+        # Net = actual prices (includes spread + all slippage)
+        net_pnl_pips = (actual_exit - actual_entry) / pip
     else:
         actual_exit = exit_price + slip_exit_price  # worse for shorts
-        gross_pnl_pips = (actual_entry - exit_price) / pip
+        gross_pnl_pips = (signal.entry_price - exit_price) / pip
+        net_pnl_pips = (actual_entry - actual_exit) / pip
 
     gross_pnl_usd = gross_pnl_pips * ppv
+    net_pnl_usd = net_pnl_pips * ppv
 
-    total_cost = spread_usd + slip_entry_usd + slip_exit_usd
-    net_pnl_pips = gross_pnl_pips - (spread_pips + slip_entry_pips + slip_exit_pips)
-    net_pnl_usd = gross_pnl_usd - total_cost
+    total_cost = gross_pnl_usd - net_pnl_usd
 
     # Timing
     entry_time = signal.bar_time
